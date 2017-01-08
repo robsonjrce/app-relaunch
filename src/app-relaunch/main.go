@@ -32,7 +32,7 @@ func watchFile(filePath string) error {
   return nil
 }
 
-func runCommandWithOutputStream(command string) {
+func runCommandWithOutputStream(command string) (*exec.Cmd, error) {
   cmd := exec.Command(command)
   cmdReader, err := cmd.StdoutPipe()
   if err != nil {
@@ -53,11 +53,13 @@ func runCommandWithOutputStream(command string) {
     os.Exit(1)
   }
 
-  err = cmd.Wait()
-  if err != nil {
-    fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
-    os.Exit(1)
-  }
+  return cmd, err
+
+  // err = cmd.Wait()
+  // if err != nil {
+  //   fmt.Fprintln(os.Stderr, "Error waiting for Cmd", err)
+  //   os.Exit(1)
+  // }
 }
 
 func runCommand(command string) {
@@ -79,7 +81,30 @@ func main() {
   if _, err := os.Stat(filename); os.IsNotExist(err) {
     fmt.Println("file doesn't exist")
   } else {
-    runCommandWithOutputStream(filename)
+    if cmd, err := runCommandWithOutputStream(filename); err == nil {
+      // terminating program
+      //
+      done := make(chan error, 1)
+      go func() {
+        done <- cmd.Wait()
+      }()
+
+      select {
+        case <-time.After(3 * time.Second):
+          if err := cmd.Process.Kill(); err != nil {
+            log.Fatal("failed to kill: ", err)
+          }
+          log.Println("process killed as timeout reached")
+
+        case err := <-done:
+          if err != nil {
+            log.Printf("process done with error = %v", err)
+          } else {
+            log.Print("process done gracefully without error")
+          }
+      }
+    }
+
     // doneChan := make(chan bool)
 
     // go func(doneChan chan bool) {
