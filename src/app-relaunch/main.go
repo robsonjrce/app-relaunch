@@ -79,47 +79,46 @@ func main() {
   filename := args[0]
 
   if _, err := os.Stat(filename); os.IsNotExist(err) {
-    fmt.Println("file doesn't exist")
+    log.Fatal("file doesn't exist")
   } else {
-    if cmd, err := runCommandWithOutputStream(filename); err == nil {
-      // terminating program
-      //
-      done := make(chan error, 1)
-      go func() {
-        done <- cmd.Wait()
-      }()
+    for {
+      if cmd, err := runCommandWithOutputStream(filename); err == nil {
+        // terminating program
+        //
+        killChan := make(chan bool)
+        go func(doneChan chan bool) {
+          defer func() {
+            doneChan <- true
+          }()
 
-      select {
-        case <-time.After(3 * time.Second):
-          if err := cmd.Process.Kill(); err != nil {
-            log.Fatal("failed to kill: ", err)
-          }
-          log.Println("process killed as timeout reached")
-
-        case err := <-done:
+          err := watchFile(filename)
           if err != nil {
-            log.Printf("process done with error = %v", err)
-          } else {
-            log.Print("process done gracefully without error")
+            fmt.Println(err)
           }
+
+          log.Println("file has changed")
+        }(killChan)
+
+        doneChan := make(chan error, 1)
+        go func() {
+          doneChan <- cmd.Wait()
+        }()
+
+        select {
+          case <-killChan:
+            if err := cmd.Process.Kill(); err != nil {
+              log.Fatal("failed to kill: ", err)
+            }
+            log.Println("process killed as new file was identified")
+
+          case err := <-doneChan:
+            if err != nil {
+              log.Printf("process done with error = %v", err)
+            } else {
+              log.Print("process done gracefully without error")
+            }
+        }
       }
     }
-
-    // doneChan := make(chan bool)
-
-    // go func(doneChan chan bool) {
-    //   defer func() {
-    //     doneChan <- true
-    //   }()
-
-    //   err := watchFile(filename)
-    //   if err != nil {
-    //     fmt.Println(err)
-    //   }
-
-    //   fmt.Println("File has been changed")
-    // }(doneChan)
-
-    // <-doneChan
   }
 }
