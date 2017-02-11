@@ -33,16 +33,28 @@ func watchFile(filePath string) error {
 
 func runCommandWithOutputStream(command string) (*exec.Cmd, error) {
   cmd := exec.Command(command)
-  cmdReader, err := cmd.StdoutPipe()
+
+  cmdStdout, err := cmd.StdoutPipe()
   if err != nil {
     log.Println(os.Stderr, "Error creating StdoutPipe for Cmd", err)
     os.Exit(1)
   }
-
-  scanner := bufio.NewScanner(cmdReader)
+  scannerStdout := bufio.NewScanner(cmdStdout)
   go func() {
-    for scanner.Scan() {
-      log.Println(scanner.Text())
+    for scannerStdout.Scan() {
+      log.Println(scannerStdout.Text())
+    }
+  }()
+
+  cmdStderr, err := cmd.StderrPipe()
+  if err != nil {
+    log.Println(os.Stderr, "Error creating StdoutPipe for Cmd", err)
+    os.Exit(1)
+  }
+  scannerStderr := bufio.NewScanner(cmdStderr)
+  go func() {
+    for scannerStderr.Scan() {
+      log.Println(scannerStderr.Text())
     }
   }()
 
@@ -95,7 +107,7 @@ func main() {
             log.Fatal(err)
           }
 
-          log.Println("file has changed")
+          // log.Println("file has changed")
         }(killChan)
 
         doneChan := make(chan error, 1)
